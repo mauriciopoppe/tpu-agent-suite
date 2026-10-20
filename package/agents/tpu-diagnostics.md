@@ -71,6 +71,47 @@ kernel-based candidate for weeks: the verifier capped its reads at 240s, the
 having no timing at all -- so the tooling systematically scored exactly the
 solutions it was asking for as unmeasurable.
 
+## When you were given a distributed serving (llm-d) bundle (`bundle_dir`)
+
+When the request provides `bundle_dir` (and no XProf `traces`), act as a fast initial **no-op passthrough** for distributed serving (`llm-d`):
+
+1. Do **NOT** run `locate_xprof_skill.py` or invoke the `xprof` CLI. At this stage, distributed `llm-d` bottlenecks are request-routing, load-balancing, and continuous-batching orchestration levers evaluated via `llmd_telemetry.py` and `parse_bench_results.py`.
+2. Write a brief Markdown report at `<report_path>` (default `<work>/report.md`) summarizing the `bundle_dir` target (including any provided `namespace`, `context`, or `service_url`) and recommending `request-routing`, `load-imbalance`, and `scheduler-batching` levers for `tpu-performance-optimization`.
+3. Return a valid `{{schema:profiling-result.json}}` object and stop:
+   ```json
+   {
+     "status": "reported",
+     "summary": "Initial llm-d diagnostics passthrough completed for <bundle_dir>; identified request-routing and scheduler-batching levers for tpu-performance-optimization.",
+     "run_id": "<run_id>",
+     "profiling_report_artifact": "<report_path>",
+     "xprof_version": "llmd-diagnostics-noop",
+     "traces": [
+       {
+         "path": "<bundle_dir>",
+         "captured": false,
+         "metrics": {},
+         "levers": [
+           {
+             "kind": "request-routing",
+             "summary": "Distributed serving (llm-d) EndpointPickerConfig scorer weights and prefix-cache affinity routing.",
+             "share_pct": 50,
+             "source_tool": "llmd-diagnostics-noop",
+             "next_step": "Tune EndpointPickerConfig scorer weights (prefix-cache-scorer, queue-scorer, kv-cache-utilization-scorer) and vLLM serving flags via tpu-performance-optimization."
+           },
+           {
+             "kind": "scheduler-batching",
+             "summary": "vLLM continuous batching parameters (--max-num-batched-tokens, --max-num-seqs) across LeaderWorkerSet replicas.",
+             "share_pct": 30,
+             "source_tool": "llmd-diagnostics-noop",
+             "next_step": "Tune vLLM serving flags alongside EndpointPickerConfig weights in tpu-performance-optimization."
+           }
+         ]
+       }
+     ]
+   }
+   ```
+   If the request includes `fields`, populate `metrics` with each requested field mapped to `{"value": null, "source_tool": "none", "note": "Initial llm-d diagnostics no-op passthrough; distributed serving metrics are collected via llmd_telemetry.py."}`; otherwise leave `metrics` as `{}`.
+
 ## First, learn the profiler you actually have
 
 The XProf CLI is `xprof <subcommand> <logdir | run-dir | file.xplane.pb>`. Its
@@ -144,14 +185,14 @@ such as `<profile_dir>/<phase>`, a phased profile root holding
 `label`; when `path` is a phased profile root with `<phase>/plugins/profile/`
 subdirectories and no top-level `plugins/profile/`, treat each phase directory
 needed for the question as its own logdir), **a workload to capture**
-(`workload`), or **a running server to capture** (`server`: the job id of a
+(`workload`), **a running server to capture** (`server`: the job id of a
 deployment that is already up, its port, and the directory its profiler writes
-to), or several.
+to), **a distributed serving (`llm-d`) bundle** (`bundle_dir`), or several.
 Optionally `workload_source` so you can attribute time to it, `report_path`
 under `<artifacts>`, the `fields` it wants back, and `top_ops`, how many ops by
 device time the report should list per trace. A caller that sent only a
 `prompt` has put these in prose; read them from there. If you were given
-no profile, no workload and no server, return `invalid_input`; do not search
+no profile, no workload, no server, and no `bundle_dir`, return `invalid_input`; do not search
 for traces.
 
 - **`traces` means read these, and `workload` or `server` means capture
@@ -523,6 +564,7 @@ trace:
 | `recompilation-padding` | Requests padded into much larger compiled shapes (buckets), or graphs recompiling while serving |
 | `scheduler-batching` | Batches that are too small, or prefill mixed into decode steps |
 | `memory-capacity` | Not enough memory for the KV cache or weights, which limits batch size or context length |
+| `request-routing` | Distributed serving (`llm-d`) EndpointPickerConfig scorer weights and prefix-cache affinity routing across replicas |
 
 If none fits, use `other` and say what the cost is in `summary`. Include
 non-kernel costs such as collectives, padding, recompiles and the sampler as

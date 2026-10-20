@@ -11,10 +11,14 @@ produces: schemas/onboarding-result.json
 delegates:
 - tpu-unwiring
 - tpu-knowledge-base
+- tpu-dynamo-unwiring
 references:
 - references/tpu-model-onboarding/torch-tpu-inference.md
 - references/tpu-model-onboarding/torch-tpu-benchmark.md
 - references/tpu-model-onboarding/preflight-check.md
+- references/tpu-model-onboarding/llmd/dynamo-to-llmd-mapping.md
+- references/tpu-model-onboarding/llmd/distributed-serving-workflow.md
+- references/tpu-model-onboarding/llmd/distributed-serving-benchmark.md
 - references/common/vllm-engine-compatibility.md
 - references/tpu-model-onboarding/remote-tpu-runner.md
 - references/tpu-model-onboarding/smart-hf-search.md
@@ -59,11 +63,17 @@ scripts:
 - scripts/tpu-model-onboarding/health_probe.py
 - scripts/tpu-model-onboarding/verify_inference.py
 - scripts/tpu-model-onboarding/tpu_lock_reset.py
+- scripts/tpu-model-onboarding/dynamo_translator.py
+- scripts/tpu-model-onboarding/inspect_deployment.py
 - scripts/common/discover_vllm_flags.sh
 - scripts/common/vllm_patches/registry.json
 - scripts/common/vllm_patches/apply_vllm_patch.sh
 - scripts/common/vllm_patches/gpt_oss_mxfp4.py
 - scripts/tpu-model-onboarding/extract_kernel_reference.py
+- scripts/common/study_protocol.py
+- scripts/tpu-model-onboarding/llmd/benchmark.py
+- scripts/tpu-model-onboarding/llmd/parse_bench_results.py
+- scripts/tpu-performance-optimization/llmd_telemetry.py
 host_dependencies:
   - google-cloud-aiplatform
   - google-cloud-bigquery
@@ -104,6 +114,11 @@ Never write a file under a third-party package's name, and never symlink one
 package name to another to make an import resolve. If a caller asks for a file
 that doesn't exist, report it as missing.
 
+## Study Protocol & Query Intake Materialization
+
+When `onboarding-request.json` carries distributed serving or onboard-and-optimize intake fields (`onboarding_path`, `hardware_budget`, `traffic_profile`, `sla_constraints`), materialize the pre-registered Study Protocol (`<work>/protocol.json` conforming to `study-protocol.json`) under `<work>` by running:
+`python3 {{script:common/study_protocol.py}} --prompt "<prompt>" --run-id <run_id> --output-dir <work> --json`
+
 ## Artifact Root (`<artifacts>`)
 
 `<artifacts> = {{runs}}/<run_id>/artifacts`, `<work> = <artifacts>/tpu-model-onboarding`.
@@ -136,10 +151,35 @@ holds in every step document below.
 Both workflows take a Hugging Face model and run it on TPU, so the word
 "inference" does not decide between them. The deliverable does.
 
--   **Inference Workflow** -- the default. Read
+-   **Inference Workflow** -- the default for single-slice inference. Read
     `{{reference:tpu-model-onboarding/torch-tpu-inference.md}}`
     and follow it. It handles preflight/vllm-engine-compatibility checks followed by
     onboarding, numerical checks and deployment.
+-   **Distributed Serving Workflow** -- when the request specifies translating an existing
+    NVIDIA Dynamo deployment to `llm-d` on GKE Cloud TPU (`dynamo_unwiring`). Read
+    `{{reference:tpu-model-onboarding/llmd/distributed-serving-workflow.md}}` and follow it.
+    Delegate to {{agent:tpu-dynamo-unwiring}} to translate the manifests into an `llm-d`
+    bundle, reading `{{reference:tpu-model-onboarding/llmd/dynamo-to-llmd-mapping.md}}` for
+    parameter mappings. Never overwrite `01-endpointpickerconfig.yaml` or `base-modelserver.yaml`
+    with ad-hoc Python scripts or custom scorer plugin weights after {{agent:tpu-dynamo-unwiring}}
+    returns (pass any image or serving flag overrides via `--deployments-json` to the translator),
+    and always scope `kubectl get pods`, `kubectl wait`, and pod log queries to the deployed workload
+    label selector (`-l app=vllm-tpu-homogeneous` or `-l llm-d.ai/inferenceServing=true` /
+    `-l leaderworkerset.sigs.k8s.io/name=vllm-tpu-workers`).
+    **Never scavenge or reuse unowned cluster resources**: never query `pvc,secret,sa,role,rolebinding,configmap`
+    in a shared namespace to discover and reuse pre-existing resources (`PersistentVolumeClaim`, `Secret`,
+    `ServiceAccount`, `RoleBinding`, `ConfigMap`) or node-cached proprietary images that were not created
+    by this run or explicitly provided by the user.
+    **Stop and ask the user when stuck (`status: "needs_input"`)**: if `preflight_inspection.json` or
+    Kustomize `-k` rollout / pod startup hits a blocker (such as missing `InferencePool` / `Gateway` CRDs,
+    RBAC `Forbidden` on cluster resources or pod watching, `ErrImagePull` / `ImagePullBackOff` / `403 Forbidden`
+    on the container image, or missing Hugging Face credentials / storage volumes), do NOT improvise workarounds
+    or attach unowned resources from the namespace; immediately stop and return `status: "needs_input"` in
+    `onboarding-result.json` with a clear diagnostic summary of what failed and the specific options/parameters
+    needed from the user (e.g., container image URI, whether to use `--standalone-epp` and which `ServiceAccount`
+    to bind, or whether to mount a user-owned PVC/Secret) so `tpu-agent` can prompt the user for a decision.
+    For distributed serving benchmarks across `llm-d` or Dynamo, follow
+    `{{reference:tpu-model-onboarding/llmd/distributed-serving-benchmark.md}}` (`{{script:tpu-model-onboarding/llmd/benchmark.py}}`, `{{script:tpu-model-onboarding/llmd/parse_bench_results.py}}`, and `{{script:tpu-performance-optimization/llmd_telemetry.py}}` producing `<serving_work>/llmd-telemetry.json` conforming to `{{schema:llmd-telemetry.json}}`).
 -   **Benchmark Workflow** -- only when the user specifically asked for it,
     by name (`torch-tpu-benchmark`) or as "the benchmarking workflow". Read
     `{{reference:tpu-model-onboarding/torch-tpu-benchmark.md}}`
@@ -184,7 +224,12 @@ the benchmark workflow is reserved for requests that name it.
 Return an `onboarding-result`. Whenever a server was launched, set
 `output_files.deployments_json` to the manifest it was launched from and
 `output_files.launch_recipe` to the recipe that was submitted (e.g.
-`launch_vllm.sh`), both as fully resolved paths under the run's artifacts. They
+`launch_vllm.sh`), both as fully resolved paths under the run's artifacts. For
+distributed `llm-d` serving deployments (`mode: "distributed"`), also set
+`output_files.bundle_dir` to the rendered Kustomize bundle directory and
+`output_files.llmd_telemetry` to the aggregated `<serving_work>/llmd-telemetry.json`
+artifact so downstream Stage 2 attribution and Stage 3 (`tpu-performance-optimization`)
+consume the baseline bundle and telemetry directly. They
 are the serving configuration: tpu-agent hands both files to tpu-kernel-development,
 whose harness is built from them, and a configuration that reaches it only as
 a sentence in your `summary` is one it has to reconstruct.

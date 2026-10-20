@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NVIDIA Dynamo Unwiring Request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Optional natural-language request prompt describing the source Dynamo deployment and target GKE TPU environment."
+    },
+    "dynamo_manifests": {
+      "type": "string",
+      "description": "Fully expanded path to the file or directory containing NVIDIA Dynamo Kubernetes manifests (optional if source_namespace is provided)."
+    },
+    "source_namespace": {
+      "type": "string",
+      "description": "Kubernetes namespace of a live NVIDIA Dynamo deployment to inspect and capture when dynamo_manifests is not provided."
+    },
+    "source_context": {
+      "type": "string",
+      "description": "Optional Kubernetes context for inspecting the source Dynamo deployment."
+    },
+    "source_kubeconfig": {
+      "type": "string",
+      "description": "Optional path to a kubeconfig file for inspecting the source Dynamo deployment."
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Session run ID for artifacts isolation."
+    },
+    "target_namespace": {
+      "type": "string",
+      "default": "default",
+      "description": "Kubernetes target namespace for the translated llm-d stack."
+    },
+    "target_context": {
+      "type": "string",
+      "description": "Optional Kubernetes context for the target GKE Cloud TPU cluster."
+    },
+    "target_kubeconfig": {
+      "type": "string",
+      "description": "Optional path to a kubeconfig file for the target GKE Cloud TPU cluster."
+    },
+    "target_tpu_type": {
+      "type": "string",
+      "enum": ["v4", "v5e", "v5p", "v6e", "v7x", "tpu7x"],
+      "default": "v6e",
+      "description": "Target TPU accelerator generation."
+    },
+    "target_tpu_topology": {
+      "type": "string",
+      "default": "2x2x1",
+      "description": "TPU slice topology (e.g., 2x2x1 for 4 chips, 2x2x2 for 8 chips, 2x2x4 for 16 chips)."
+    },
+    "model_id": {
+      "type": "string",
+      "description": "Optional Hugging Face model ID override if not specified or detected in the Dynamo manifests."
+    },
+    "deployments_json": {
+      "type": "string",
+      "description": "Optional path to a single-VM deployments.json file whose tuned serving flags and environment variables are carried over into the translated LeaderWorkerSet."
+    },
+    "vllm_patch": {
+      "type": "string",
+      "description": "Optional path to a custom vLLM patch file (.patch or .py) to mount and apply in the vllm-tpu container prior to launching vllm serve."
+    },
+    "standalone_epp": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to generate a standalone EPP + Envoy proxy router Deployment."
+    },
+    "envoy_configmap": {
+      "type": "string",
+      "description": "Optional Envoy ConfigMap name for a standalone EPP router."
+    },
+    "epp_service_account": {
+      "type": "string",
+      "description": "Optional ServiceAccount name for the EPP router."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to validate manifests via Kubernetes dry-run apply."
+    }
+  },
+  "examples": [
+    {
+      "dynamo_manifests": "/home/user/manifests/dynamo-qwen3.5.yaml",
+      "run_id": "20261012T120000Z-000000000000",
+      "target_namespace": "llm-serving",
+      "target_tpu_type": "v6e",
+      "target_tpu_topology": "2x2x1",
+      "model_id": "Qwen/Qwen3.5-27B",
+      "dry_run": true
+    },
+    {
+      "source_namespace": "dynamo-gpu-source",
+      "run_id": "20261012T120000Z-000000000000",
+      "target_namespace": "llmd-tpu-target",
+      "target_tpu_type": "tpu7x",
+      "target_tpu_topology": "2x2x1",
+      "standalone_epp": true,
+      "dry_run": true
+    }
+  ]
+}

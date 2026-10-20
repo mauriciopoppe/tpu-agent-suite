@@ -85,6 +85,14 @@
           "type": "string",
           "description": "Path to bench_request.json (schemas/bench-request.json): the serving benchmark's route, the client's exact arguments and the server it measured. Run again against a changed server, it measures the change on the same points."
         },
+        "bundle_dir": {
+          "type": "string",
+          "description": "Path to the rendered distributed serving (`llm-d`) Kustomize bundle directory."
+        },
+        "llmd_telemetry": {
+          "type": "string",
+          "description": "Path to the aggregated distributed serving telemetry artifact (`llmd-telemetry.json`) produced by `llmd_telemetry.py`."
+        },
         "results_json": {
           "type": "string",
           "description": "Path to benchmark results: for a served model, the serving benchmark client's summary.json for `bench_request` (a sweep's merged one)."

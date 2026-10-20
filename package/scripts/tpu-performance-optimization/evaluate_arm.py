@@ -50,6 +50,257 @@ from framework import study  # noqa: E402
 
 _NUMERIC_STR_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
 
+_SCORER_ALIASES: dict[str, str] = {
+    "prefix-cache-scorer": "prefix-cache-scorer",
+    "precise-prefix-cache-scorer": "prefix-cache-scorer",
+    "queue-depth-scorer": "queue-depth-scorer",
+    "queue-scorer": "queue-depth-scorer",
+    "active-request-scorer": "queue-depth-scorer",
+    "kv-utilization-scorer": "kv-utilization-scorer",
+    "kv-cache-utilization-scorer": "kv-utilization-scorer",
+    "token-load-scorer": "token-load-scorer",
+    "no-hit-lru-scorer": "no-hit-lru-scorer",
+    "session-affinity-scorer": "session-affinity-scorer",
+}
+
+
+def _normalize_vllm_flag_key(key: str) -> str:
+    cleaned = str(key).strip().replace("_", "-")
+    if not cleaned.startswith("--"):
+        cleaned = "--" + cleaned.lstrip("-")
+    return cleaned
+
+
+def _normalize_distributed_params(
+    target_parameters: Mapping[str, Any] | None = None,
+    epp_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Canonicalize distributed-serving (`llm-d`) parameters and `epp_config`."""
+    raw: dict[str, Any] = dict(target_parameters or {})
+    nested_epp = raw.pop("epp_config", None)
+    merged_epp: dict[str, Any] = {}
+    if isinstance(nested_epp, Mapping):
+        merged_epp.update(nested_epp)
+    if isinstance(epp_config, Mapping):
+        merged_epp.update(epp_config)
+    for k, v in merged_epp.items():
+        if k not in raw:
+            raw[k] = v
+        elif isinstance(raw[k], Mapping) and isinstance(v, Mapping):
+            raw[k] = {**dict(raw[k]), **dict(v)}
+
+    # Canonicalize scorer keys and weights if present
+    if "scorers" in raw and isinstance(raw["scorers"], Mapping):
+        norm_scorers: dict[str, Any] = {}
+        for s_key, s_val in raw["scorers"].items():
+            canon_s = _SCORER_ALIASES.get(
+                str(s_key).strip(),
+                str(s_key).strip())
+            if isinstance(s_val, Mapping):
+                w = s_val.get("weight", 1)
+                params = s_val.get("parameters") or {}
+                if params:
+                    norm_scorers[canon_s] = {
+                        "weight": w,
+                        "parameters": dict(params)
+                    }
+                else:
+                    norm_scorers[canon_s] = w
+            else:
+                norm_scorers[canon_s] = s_val
+        raw["scorers"] = norm_scorers
+
+    # Canonicalize vllm_flags keys if present
+    if "vllm_flags" in raw and isinstance(raw["vllm_flags"], Mapping):
+        raw["vllm_flags"] = {
+            _normalize_vllm_flag_key(fk): fv
+            for fk, fv in raw["vllm_flags"].items()
+        }
+
+    # Fold top-level vLLM flag keys (e.g. max_num_batched_tokens, max_num_seqs,
+    # gpu_memory_utilization) into canonical form when distributed keys exist
+    _TOP_VLLM_KEYS = (
+        "max_num_batched_tokens",
+        "max-num-batched-tokens",
+        "--max-num-batched-tokens",
+        "max_num_seqs",
+        "max-num-seqs",
+        "--max-num-seqs",
+        "gpu_memory_utilization",
+        "gpu-memory-utilization",
+        "--gpu-memory-utilization",
+    )
+    has_llmd_context = any(k in raw for k in (
+        "scorers",
+        "filters",
+        "vllm_flags",
+        "saturation_thresholds",
+        "serving_mode",
+    )) or any(k in raw for k in _TOP_VLLM_KEYS)
+
+    if has_llmd_context:
+        vflags = dict(raw.get("vllm_flags") or {})
+        for tk in list(raw.keys()):
+            if tk in _TOP_VLLM_KEYS or (
+                    tk in ("block_size", "block-size", "--block-size") and
+                ("scorers" in raw or "vllm_flags" in raw or "filters" in raw)):
+                vflags[_normalize_vllm_flag_key(tk)] = raw.pop(tk)
+        if vflags:
+            raw["vllm_flags"] = vflags
+
+    return raw
+
+
+def _lookup_dotted(data: Mapping[str, Any], dotted: str) -> Any:
+    cur: Any = data
+    for part in dotted.split("."):
+        if isinstance(cur, Mapping) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    return cur
+
+
+_LLMD_METRIC_PATHS: dict[str, str] = {
+    "output_token_throughput_tps": "throughput.output_token_throughput_tps",
+    "output_tokens_per_s": "throughput.output_token_throughput_tps",
+    "tokens_per_s": "throughput.output_token_throughput_tps",
+    "total_token_throughput_tps": "throughput.total_token_throughput_tps",
+    "total_tokens_per_s": "throughput.total_token_throughput_tps",
+    "input_token_throughput_tps": "throughput.input_token_throughput_tps",
+    "input_tokens_per_s": "throughput.input_token_throughput_tps",
+    "request_throughput_rps": "throughput.request_throughput_rps",
+    "requests_per_s": "throughput.request_throughput_rps",
+    "rps": "throughput.request_throughput_rps",
+    "goodput_pct": "throughput.goodput.goodput_percentage",
+    "goodput_percentage": "throughput.goodput.goodput_percentage",
+    "goodput-floor": "throughput.goodput.goodput_percentage",
+    "goodput_rps": "throughput.goodput.completed_within_sla_rps",
+    "completed_within_sla_rps": "throughput.goodput.completed_within_sla_rps",
+    "ttft_p50_ms": "latencies.ttft_ms.p50",
+    "ttft_median_ms": "latencies.ttft_ms.p50",
+    "ttft_p90_ms": "latencies.ttft_ms.p90",
+    "ttft_p95_ms": "latencies.ttft_ms.p95",
+    "ttft_p99_ms": "latencies.ttft_ms.p99",
+    "ttft_ms": "latencies.ttft_ms.p99",
+    "ttft-ceiling": "latencies.ttft_ms.p99",
+    "ttft-p99-ceiling": "latencies.ttft_ms.p99",
+    "ttft_mean_ms": "latencies.ttft_ms.mean",
+    "tpot_p50_ms": "latencies.tpot_ms.p50",
+    "tpot_median_ms": "latencies.tpot_ms.p50",
+    "tpot_p90_ms": "latencies.tpot_ms.p90",
+    "tpot_p95_ms": "latencies.tpot_ms.p95",
+    "tpot_p99_ms": "latencies.tpot_ms.p99",
+    "tpot_ms": "latencies.tpot_ms.p99",
+    "tpot-ceiling": "latencies.tpot_ms.p99",
+    "tpot-p99-ceiling": "latencies.tpot_ms.p99",
+    "tpot_mean_ms": "latencies.tpot_ms.mean",
+    "itl_p50_ms": "latencies.itl_ms.p50",
+    "itl_p90_ms": "latencies.itl_ms.p90",
+    "itl_p95_ms": "latencies.itl_ms.p95",
+    "itl_p99_ms": "latencies.itl_ms.p99",
+    "itl_ms": "latencies.itl_ms.p99",
+    "itl_mean_ms": "latencies.itl_ms.mean",
+    "e2e_p50_ms": "latencies.e2e_ms.p50",
+    "e2e_p90_ms": "latencies.e2e_ms.p90",
+    "e2e_p95_ms": "latencies.e2e_ms.p95",
+    "e2e_p99_ms": "latencies.e2e_ms.p99",
+    "e2e_ms": "latencies.e2e_ms.p99",
+    "e2e_mean_ms": "latencies.e2e_ms.mean",
+    "queue_wait_p99_ms": "latencies.queue_wait_ms.p99",
+    "queue_wait_ms": "latencies.queue_wait_ms.p99",
+    "error_rate": "system_reliability.error_rate",
+    "timeout_rate": "system_reliability.timeout_rate",
+    "prefix_cache_hit_rate": "cache_memory.prefix_cache.hit_rate_tokens",
+    "hit_rate_tokens": "cache_memory.prefix_cache.hit_rate_tokens",
+    "kv_cache_usage_peak": "cache_memory.kv_cache.usage_factor_peak",
+    "usage_factor_peak": "cache_memory.kv_cache.usage_factor_peak",
+    "kv_cache_usage_mean": "cache_memory.kv_cache.usage_factor_mean",
+    "usage_factor_mean": "cache_memory.kv_cache.usage_factor_mean",
+    "worker_load_skew_ratio": "worker_telemetry.worker_load_skew_ratio",
+}
+
+
+def extract_llmd_metric(telemetry: Mapping[str, Any],
+                        metric_name: str) -> float | None:
+    """Extract a scalar metric value from an `llmd-telemetry.json` document."""
+    key = str(metric_name).strip()
+    if key in ("error_rate_pct", "error-rate-ceiling"):
+        raw_err = _lookup_dotted(telemetry, "system_reliability.error_rate")
+        if isinstance(raw_err, (int, float)) and not isinstance(raw_err, bool):
+            return float(raw_err) * 100.0
+        return None
+    if key in ("timeout_rate_pct", "timeout-rate-ceiling"):
+        raw_to = _lookup_dotted(telemetry, "system_reliability.timeout_rate")
+        if isinstance(raw_to, (int, float)) and not isinstance(raw_to, bool):
+            return float(raw_to) * 100.0
+        return None
+
+    dotted = _LLMD_METRIC_PATHS.get(key, key)
+    val = _lookup_dotted(telemetry, dotted)
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return float(val)
+    return None
+
+
+def _load_telemetry_items(
+    telemetry: Mapping[str, Any] | str | pathlib.Path | Sequence[Any] | None,
+) -> list[dict[str, Any]]:
+    """Normalize telemetry argument (dict, path, JSON string, or list) into a list of dicts."""
+    if telemetry is None:
+        return []
+    if isinstance(telemetry, Mapping):
+        return [dict(telemetry)]
+    if isinstance(telemetry, (str, pathlib.Path)):
+        text = str(telemetry).strip()
+        if text.startswith(("{", "[")):
+            parsed = json.loads(text)
+        else:
+            parsed = json.loads(pathlib.Path(text).read_text(encoding="utf-8"))
+        if isinstance(parsed, Mapping):
+            return [dict(parsed)]
+        if isinstance(parsed, Sequence):
+            return [dict(item) for item in parsed if isinstance(item, Mapping)]
+        return []
+    if isinstance(telemetry, Sequence):
+        items: list[dict[str, Any]] = []
+        for elem in telemetry:
+            items.extend(_load_telemetry_items(elem))
+        return items
+    return []
+
+
+def extract_llmd_gate_measurements(
+    telemetry_items: Sequence[Mapping[str, Any]],
+    protocol: Mapping[str, Any],
+    execution_id: str,
+) -> list[dict[str, Any]]:
+    """Extract gate measurements from `llmd-telemetry.json` items for `protocol` gates."""
+    if not telemetry_items:
+        return []
+    out: list[dict[str, Any]] = []
+    for gate in protocol.get("admissibility_gates") or []:
+        if not isinstance(gate, Mapping) or "name" not in gate:
+            continue
+        g_name = str(gate["name"])
+        g_metric = str(gate.get("metric") or g_name)
+        vals: list[float] = []
+        for t_doc in telemetry_items:
+            v = extract_llmd_metric(t_doc, g_metric)
+            if v is None and g_metric != g_name:
+                v = extract_llmd_metric(t_doc, g_name)
+            # Note: if gate metric is `error_rate_pct` and bound <= 1.0 while raw error_rate
+            # was intended as a fraction or percentage, `extract_llmd_metric` handles conversion.
+            if v is not None:
+                vals.append(v)
+        if vals:
+            out.append({
+                "name": g_name,
+                "value": float(statistics.median(vals)),
+                "execution_id": execution_id,
+            })
+    return out
+
 
 def compare_value(val: float, comparator: str, bound: float) -> bool:
     """Evaluate comparator between measurement value and bound."""
@@ -114,15 +365,21 @@ def compute_arm_fingerprint(
     kind: str,
     target_parameters: Mapping[str, Any] | None = None,
     claim: str = "",
+    epp_config: Mapping[str, Any] | None = None,
 ) -> str:
     """Return a 16-hex-character SHA-256 fingerprint for an arm hypothesis.
 
-    When target_parameters is non-empty, the fingerprint is computed from
-    (kind, canonical(target_parameters)) so minor claim rewordings or CLI
-    numeric stringification ("128" vs 128 vs 128.0) do not defeat deduplication.
-    When target_parameters is empty, normalized claim text is included.
+    When target_parameters (or epp_config) is non-empty, the fingerprint is
+    computed from (kind, canonical(target_parameters + epp_config)) so minor
+    claim rewordings, scorer alias differences, or CLI numeric stringification
+    ("128" vs 128 vs 128.0) do not defeat deduplication.
+    When target_parameters and epp_config are empty, normalized claim text is included.
     """
-    norm_params = _canonicalize_value(dict(target_parameters or {}),
+    merged_params = _normalize_distributed_params(
+        target_parameters=target_parameters,
+        epp_config=epp_config,
+    )
+    norm_params = _canonicalize_value(merged_params,
                                       coerce_numeric_strings=True)
     payload: dict[str, Any] = {
         "kind": str(kind).strip().lower(),
@@ -140,12 +397,14 @@ def find_duplicate_arm(
     prior_arms: Sequence[Mapping[str, Any]],
     claim: str = "",
     current_arm_id: str | None = None,
+    epp_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Find an already-evaluated or in-flight prior arm with the same fingerprint."""
     candidate_fp = compute_arm_fingerprint(
         kind=kind,
         target_parameters=target_parameters,
         claim=claim,
+        epp_config=epp_config,
     )
     for entry in prior_arms:
         prior_id = entry.get("arm")
@@ -165,6 +424,7 @@ def find_duplicate_arm(
             kind=prior_kind,
             target_parameters=entry.get("target_parameters"),
             claim=entry.get("claim", ""),
+            epp_config=entry.get("epp_config"),
         )
         if prior_fp == candidate_fp:
             return dict(entry)
@@ -355,11 +615,16 @@ def check_artifact_paths(
 def evaluate_arm(
     arm: str,
     execution_id: str,
-    replicates: Sequence[float],
-    protocol: dict[str, Any],
-    baseline: dict[str, Any] | None,
+    replicates: Sequence[float] | None = None,
+    protocol: dict[str, Any] | None = None,
+    baseline: dict[str, Any] | None = None,
     gate_measurements: Sequence[dict[str, Any]] | None = None,
     *,
+    telemetry: Mapping[str, Any] | str | pathlib.Path | Sequence[Any]
+    | None = None,
+    llmd_telemetry: Mapping[str, Any] | str | pathlib.Path | Sequence[Any]
+    | None = None,
+    epp_config: Mapping[str, Any] | None = None,
     protected_paths: Sequence[str | pathlib.Path] | None = None,
     expected_sha256: Mapping[str, str] | None = None,
     repo_root: str | pathlib.Path | None = None,
@@ -371,12 +636,22 @@ def evaluate_arm(
     run_id: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate arm execution and return an arm-result.json compliant dict."""
+    protocol = protocol or {}
     primary = protocol.get("primary_metric") or {}
     metric_name = primary.get("name", "metric")
     direction = primary.get("direction", "maximize")
     unit = primary.get("unit", "")
     noise_floor_pct = float(protocol.get("noise_floor_pct", 0.0))
     required_reps = int(protocol.get("replicate_count", 1))
+
+    telemetry_items = _load_telemetry_items(
+        telemetry if telemetry is not None else llmd_telemetry)
+    resolved_replicates: list[float] = [float(x) for x in (replicates or [])]
+    if not resolved_replicates and telemetry_items:
+        for t_doc in telemetry_items:
+            val = extract_llmd_metric(t_doc, metric_name)
+            if val is not None:
+                resolved_replicates.append(val)
 
     integrity_reasons: list[str] = []
 
@@ -388,6 +663,7 @@ def evaluate_arm(
             prior_arms=prior_arms,
             claim=claim,
             current_arm_id=arm,
+            epp_config=epp_config,
         )
         if dup is not None:
             dup_verdict = (dup.get("result")
@@ -412,7 +688,13 @@ def evaluate_arm(
 
     # Evaluate admissibility gates first so declared gates are always reported.
     declared_gates = protocol.get("admissibility_gates") or []
-    measured_gates_map = {g["name"]: g for g in (gate_measurements or [])}
+    measured_gates_map: dict[str, dict[str, Any]] = {}
+    if telemetry_items:
+        for g_item in extract_llmd_gate_measurements(telemetry_items, protocol,
+                                                     execution_id):
+            measured_gates_map[g_item["name"]] = g_item
+    for g_item in gate_measurements or []:
+        measured_gates_map[g_item["name"]] = g_item
 
     evaluated_gates: list[dict[str, Any]] = []
     all_gates_passed = True
@@ -471,7 +753,7 @@ def evaluate_arm(
 
     # When no replicates were measured, never fabricate a metric with value 0.0,
     # replicates 0 (below schema minimum 1), or provenance "measured".
-    if not replicates:
+    if not resolved_replicates:
         summary = "no replicate measurements provided; metric was not evaluated"
         if integrity_reasons:
             summary = f"{summary}; {'; '.join(integrity_reasons)}"
@@ -484,12 +766,20 @@ def evaluate_arm(
             "summary": summary,
         }
 
-    rep_count = len(replicates)
-    agg_value = float(statistics.median(replicates))
+    rep_count = len(resolved_replicates)
+    agg_value = float(statistics.median(resolved_replicates))
 
     # Verdict determination via framework.study.compute_arm_verdict
-    b_metric = (baseline.get("metric") or {}) if baseline else {}
-    b_val = float(b_metric.get("value", 0.0))
+    b_val = 0.0
+    if isinstance(baseline, Mapping):
+        b_metric = baseline.get("metric")
+        if isinstance(b_metric, Mapping) and "value" in b_metric:
+            b_val = float(b_metric["value"])
+        else:
+            extracted_b = extract_llmd_metric(baseline, metric_name)
+            if extracted_b is not None:
+                b_val = float(extracted_b)
+
     verdict, delta_pct = study.compute_arm_verdict(
         metric_value=agg_value,
         baseline_value=b_val,
@@ -541,6 +831,15 @@ def main() -> int:
         type=float,
         default=(),
         help="Measured primary metric replicate values.",
+    )
+    parser.add_argument(
+        "--telemetry",
+        "--llmd-telemetry",
+        dest="telemetry",
+        nargs="*",
+        default=None,
+        help=
+        "Optional llmd-telemetry.json file path(s) or inline JSON payloads.",
     )
     parser.add_argument(
         "--protocol",
@@ -607,6 +906,7 @@ def main() -> int:
         protocol=protocol,
         baseline=baseline,
         gate_measurements=gates,
+        telemetry=args.telemetry,
         protected_paths=args.protected_paths,
         expected_sha256=sha_map or None,
         artifacts=args.artifacts,

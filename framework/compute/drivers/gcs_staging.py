@@ -259,7 +259,13 @@ def staging_credentials(service_account: str | None = None,
     # before asking for google-auth: fixing the dependency first would only
     # lead to this error next.
     key_path = Path(key_file).expanduser() if key_file else None
-    if key_path is not None and not key_path.is_file():
+    is_file = False
+    if key_path is not None:
+        try:
+            is_file = key_path.is_file()
+        except OSError:
+            is_file = False
+    if key_path is not None and not is_file:
         raise base.ComputeConfigError(
             f"'{KEY_FILE_PARAM}' names {key_file}, which is not a file.",
             error_code="INVALID_FIELD",

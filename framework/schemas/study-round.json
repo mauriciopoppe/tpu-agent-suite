@@ -29,6 +29,7 @@
               "host-critical-path",
               "recompilation-padding",
               "scheduler-batching",
+              "request-routing",
               "memory-capacity"
             ],
             "description": "What kind of problem this is, which decides the ceiling formula and where the work can go. Named rather than inferred, because a candidate routed by its symptom instead of its cause reaches somewhere that cannot act on it."

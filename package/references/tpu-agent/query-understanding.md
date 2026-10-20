@@ -2,6 +2,8 @@
 delegates:
   - tpu-knowledge-base
   - tpu-model-onboarding
+scripts:
+  - scripts/common/study_protocol.py
 ---
 
 # Query understanding
@@ -60,6 +62,7 @@ Onboarding needs an exact Hub repository id, `org/name`.
   or instruct, version, size, quantized. Do not present your reading as
   resolved: it is inference until the user confirms it, and preflight checks
   that the repository exists and can be read.
+- When unwiring an existing NVIDIA Dynamo deployment to `llm-d` on GKE TPU (`dynamo_unwiring`), the `model_id` and TPU hardware topology can be auto-discovered from the source GPU and target TPU clusters via `{{runtime}} deployment inspect` rather than required upfront in the prompt.
 
 ## 3. Ask what is already known
 
@@ -69,7 +72,7 @@ architecture features the runtime may not cover (mixture-of-experts routing, a
 non-standard quantization format, custom kernels), whether `torch_tpu`
 supports them, and the target accelerator's HBM when the user named one. For
 the gpt-oss-20b prompt that is MoE routing, MXFP4 support and the
-accelerator's memory in one request, not three.
+accelerator's memory in one request, not three. When the request involves NVIDIA Dynamo, `llm-d`, distributed serving, or an onboard-and-optimize study (such as `AgentX`), include `"dynamo-unwiring"` in the {{agent:tpu-knowledge-base}} query and follow the returned `llmd-dynamo-unwiring` Knowledge Base playbook for cluster discovery (`--target-cluster-only`), intake defaults (`onboard_only` Stage 1 vs. `onboard_and_optimize` 3-Stage Plan), `protocol.json` compilation, and request schema fields.
 
 ```json
 {"query": "<the facts, as numbered questions>"}
@@ -168,6 +171,7 @@ reading of the request:
 - `model.model_id`: the confirmed repository id.
 - `mode`: set only when the user named a deliverable; otherwise omit it, and
   onboarding applies its own default.
+- For distributed serving (`mode: "distributed"`, `onboarding_path: "dynamo_unwiring"`) or onboard-and-optimize requests, populate the resolved fields in `{{schema:onboarding-request.json}}` (and compile `protocol.json` via `{{script:common/study_protocol.py}}` for `{{schema:study-request.json}}` only when optimization was requested).
 - `run_id`: the session `run_id`.
 
 ## Rules

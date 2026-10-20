@@ -89,6 +89,7 @@ BOTTLENECK_KINDS: tuple[str, ...] = (
     "host-critical-path",
     "recompilation-padding",
     "scheduler-batching",
+    "request-routing",
     "memory-capacity",
 )
 

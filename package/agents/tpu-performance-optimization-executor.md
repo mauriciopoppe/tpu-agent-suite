@@ -27,6 +27,7 @@ references:
   - references/tpu-performance-optimization/NATIVE_PYTORCH_PERFORMANCE.md
   - references/tpu-performance-optimization/VLLM_TORCHTPU_MODEL_SUPPORT.md
   - references/tpu-performance-optimization/SERVING_BENCHMARK.md
+  - references/tpu-performance-optimization/LLMD_ORCHESTRATION.md
 ---
 
 # tpu-performance-optimization-executor
@@ -79,11 +80,14 @@ Follow these four phases in strict order:
    - Inspect the target codebase or serving configuration identified by the arm's `kind`, `claim`, and `target_parameters`.
    - **Model Engine Classification & Routing**:
      - **Native `vllm-torchtpu` Supported Models** (see {{reference:tpu-performance-optimization/VLLM_TORCHTPU_MODEL_SUPPORT.md}}, the single source of truth): Implement changes within the `vllm-torchtpu` runtime (engine serving arguments, tensor parallel configurations, Pallas attention kernels, or XLA compiler flags).
+     - **Distributed `llm-d` Serving Bundles (`request-routing`, `load-imbalance`, `scheduler-batching`)**: Follow `{{reference:tpu-performance-optimization/LLMD_ORCHESTRATION.md}}` for bundle checkpointing, direct YAML editing, validation, cluster rollout, telemetry aggregation, and rollback on non-win.
      - **Other Models (Not Supported by `vllm-torchtpu`)**: Fall under {{reference:tpu-performance-optimization/NATIVE_PYTORCH_PERFORMANCE.md}} for native PyTorch / `torch_tpu` execution without an inference engine. Follow the strict 5-phase ladder and implementation patterns (static KV cache, compiled decode forward, 128-byte tile padding alignment, compiler flags).
    - Implement the code, kernel, sharding, or configuration changes needed to test the hypothesis.
 
 ### Phase 2: Staged Triage (Static Check, Accuracy, Microbenchmark Gain)
 Never launch a full multi-chip cluster sweep blindly. Always progress through staged gates. A failure at any stage below is a defect in **your implementation**, not evidence against the hypothesis: enter the **Repair Loop** (below) rather than returning. The only early exit is a *correct* implementation that shows no local gain (Stage 2c).
+
+- **Distributed `llm-d` Orchestration Arms (`request-routing`, `load-imbalance`, `scheduler-batching`)**: Follow the Phase 2 validation gate in `{{reference:tpu-performance-optimization/LLMD_ORCHESTRATION.md}}` before proceeding to Phase 3 cluster rollout.
 
 1. **Stage 2a (Static Sanity & SRAM + HBM Memory Hierarchy Check)**:
    - Run static syntax and import validation on modified Python files using `{{script:tpu-performance-optimization/arm_microbench.py}} --file <path>` (ensuring zero syntax errors and forbidding deprecated `torch_xla` imports).

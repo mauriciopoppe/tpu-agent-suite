@@ -93,6 +93,7 @@ HYPOTHESIS_FIELDS = (
     "share",
     "headroom",
     "target_parameters",
+    "epp_config",
     "kb_references",
     "variants",
 )
@@ -373,7 +374,7 @@ def _object_item_errors(
 def _variant_errors(where: str, variant: Any) -> list[str]:
     if not isinstance(variant, Mapping):
         return [f"invalid_shape: {where} must be an object"]
-    allowed = ("suffix", "target_parameters", "claim")
+    allowed = ("suffix", "target_parameters", "epp_config", "claim")
     errors: list[str] = []
     unknown = sorted(str(key) for key in variant if key not in allowed)
     if unknown:
@@ -388,6 +389,9 @@ def _variant_errors(where: str, variant: Any) -> list[str]:
             variant["target_parameters"], Mapping):
         errors.append(
             f"invalid_shape: {where}.target_parameters must be an object")
+    if "epp_config" in variant and not isinstance(variant["epp_config"],
+                                                  Mapping):
+        errors.append(f"invalid_shape: {where}.epp_config must be an object")
     if "claim" in variant and (not isinstance(variant["claim"], str)
                                or not variant["claim"]):
         errors.append(
@@ -480,6 +484,8 @@ def _hypothesis_errors(raw: Any) -> list[str]:
     if "target_parameters" in raw and not isinstance(raw["target_parameters"],
                                                      Mapping):
         reasons.append("invalid_shape: target_parameters must be an object")
+    if "epp_config" in raw and not isinstance(raw["epp_config"], Mapping):
+        reasons.append("invalid_shape: epp_config must be an object")
     if "kb_references" in raw and not (isinstance(raw["kb_references"], list)
                                        and all(
                                            isinstance(ref, str)
@@ -523,16 +529,33 @@ def _expand_arms(hypothesis: Mapping[str, Any]) -> list[dict[str, Any]]:
     hypothesis_id = hypothesis["id"]
     claim = hypothesis["claim"]
     base = dict(hypothesis.get("target_parameters") or {})
+    base_epp = dict(hypothesis.get("epp_config") or {})
+    if base_epp:
+        existing_epp = base.get("epp_config")
+        if isinstance(existing_epp, Mapping):
+            base["epp_config"] = {**dict(existing_epp), **base_epp}
+        else:
+            base["epp_config"] = base_epp
     specs = [(hypothesis_id, claim, base)]
     if hypothesis.get("variants"):
-        specs = [(
-            f"{hypothesis_id}-{variant['suffix']}",
-            variant.get("claim") or f"{claim} [{variant['suffix']}]",
-            {
+        specs = []
+        for variant in hypothesis["variants"]:
+            merged = {
                 **base,
-                **dict(variant.get("target_parameters") or {})
-            },
-        ) for variant in hypothesis["variants"]]
+                **dict(variant.get("target_parameters") or {}),
+            }
+            var_epp = dict(variant.get("epp_config") or {})
+            if var_epp:
+                prev_epp = merged.get("epp_config")
+                if isinstance(prev_epp, Mapping):
+                    merged["epp_config"] = {**dict(prev_epp), **var_epp}
+                else:
+                    merged["epp_config"] = var_epp
+            specs.append((
+                f"{hypothesis_id}-{variant['suffix']}",
+                variant.get("claim") or f"{claim} [{variant['suffix']}]",
+                merged,
+            ))
     return [{
         "arm":
         arm_id,

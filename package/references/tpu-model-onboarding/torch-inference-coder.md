@@ -199,6 +199,12 @@ The key is **`model_id`**, matching the Pydantic schema in
 `{{script:tpu-model-onboarding/inference.py}}`. A manifest
 using `model` fails validation at server startup.
 
+When running on a container-backed TPU profile (`gke_job` or `gke_pod`), also record in `<inference_work>/deployments.json`:
+- `"image"`: the verified TPU container image from `compute inspect` (`details.image`) when present.
+- `"vllm_patch"`: the patch filename or path when the model matches an entry in `{{script:common/vllm_patches/registry.json}}` or a runtime patch was applied.
+
+Recording `"image"` and `"vllm_patch"` alongside the tuned parallelism flags (`tensor_parallel_size`, `data_parallel_size`, `max_model_len`) ensures downstream distributed serving (`dynamo_translator.py --deployments-json`) carries the verified TPU base image, serving arguments, and runtime patch (`04-vllm-patches.yaml`) directly into the `LeaderWorkerSet`.
+
 Example for `vllm`:
 ```json
 {
@@ -207,6 +213,7 @@ Example for `vllm`:
       "model_id": "meta-llama/Llama-3.1-8B-Instruct",
       "engine": "vllm",
       "port": 8000,
+      "image": "us-docker.pkg.dev/cloud-tpu-images/vllm/vllm-torchtpu:latest",
       "max_model_len": 2048,
       "tensor_parallel_size": 8,
       "data_parallel_size": 1,
@@ -287,8 +294,7 @@ If the vLLM engine is requested:
 2.  Generate a `<inference_work>/launch_vllm.sh` bash script. Iterate through
     the extra keys in the manifest and append them as CLI flags to the vLLM command
     (changing `tensor_parallel_size` to `--tensor-parallel-size`, etc.), using
-    only flags that appeared in `vllm_flags.txt`. Skip `parallelism`; it
-    records why, and is not a flag.
+    only flags that appeared in `vllm_flags.txt`. Skip non-CLI metadata keys (`parallelism`, `image`, `vllm_patch`, `patch`, `env`, `envs`); they record deployment provenance and runtime configuration rather than `vllm serve` flags.
 3.  You MUST forcefully append `--attention-backend CUSTOM` and `--host 0.0.0.0`
     to the generated bash script. `--host 0.0.0.0` is what makes the port
     forwardable; a server bound to `127.0.0.1` inside a pod cannot be reached.

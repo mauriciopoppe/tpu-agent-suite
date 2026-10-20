@@ -78,6 +78,10 @@ compute-bound thresholds per generation: [Critical batch size](wiki/concepts/cri
 
 - [HLO](wiki/concepts/hlo.md) — JAX → StableHLO → HLO → LLO stack; anatomy of an HLO op line (shape, layout/tiling `T(8,128)(2,1)`, memory space `S(1)`); retile copies; reading sharding from local shapes and `replica_groups`.
 
+### Distributed Serving
+
+- [LLM-d Routing and EndpointPicker (EPP)](wiki/serving/llmd-routing-and-epp.md): EPP scoring pipeline, queue-depth thresholding, prefix cache routing, session affinity headers, and multi-tier routing.
+
 ## Playbooks
 ### Onboarding (CUDA → TorchTPU)
 

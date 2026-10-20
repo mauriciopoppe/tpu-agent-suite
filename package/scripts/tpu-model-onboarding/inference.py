@@ -35,6 +35,8 @@ class DeploymentBase(BaseModel):
     model_id: str
     port: int = 8000
     engine: str
+    image: Optional[str] = None
+    vllm_patch: Optional[str] = None
 
 
 class FastAPIDeployment(DeploymentBase):

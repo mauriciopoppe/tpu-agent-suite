@@ -183,6 +183,7 @@
                     "host-critical-path",
                     "recompilation-padding",
                     "scheduler-batching",
+                    "request-routing",
                     "memory-capacity",
                     "other"
                   ],

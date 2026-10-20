@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NVIDIA Dynamo Unwiring Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status"
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "ok",
+        "blocked",
+        "failed"
+      ],
+      "description": "ok: manifests translated and verified via dry-run. blocked: unsupported manifest construct or missing required source configs. failed: system or filesystem error."
+    },
+    "bundle_dir": {
+      "type": "string",
+      "description": "Fully expanded path to the directory containing the generated llm-d manifest bundle."
+    },
+    "manifest_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of generated Kubernetes manifest files within the bundle."
+    },
+    "topology": {
+      "enum": [
+        "multi-replica-llmd-homogeneous"
+      ],
+      "description": "The resolved distributed llm-d topology."
+    },
+    "model_id": {
+      "type": "string",
+      "description": "Model ID resolved from Dynamo manifests or input."
+    },
+    "target_tpu_type": {
+      "type": "string",
+      "description": "Target TPU generation."
+    },
+    "target_tpu_topology": {
+      "type": "string",
+      "description": "Target TPU topology."
+    },
+    "deployments_json": {
+      "type": "string",
+      "description": "Path to the single-VM deployments.json file applied during translation, if any."
+    },
+    "vllm_patch": {
+      "type": "string",
+      "description": "Filename of the vLLM patch carried over into 04-vllm-patches.yaml ConfigMap, if any."
+    },
+    "mapping_report": {
+      "type": "object",
+      "description": "Detailed report mapping Dynamo constructs to llm-d and TPU configurations.",
+      "additionalProperties": true,
+      "properties": {
+        "source_router": {
+          "type": "string"
+        },
+        "source_pools": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "translated_pools": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "endpoint_picker_plugins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deployments_json": {
+          "type": "string"
+        },
+        "vllm_patch": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "dry_run_verified": {
+      "type": "boolean",
+      "description": "Whether the manifest bundle passed Kubernetes dry-run validation."
+    },
+    "log_dir": {
+      "type": "string",
+      "description": "Directory holding translation logs and reports."
+    },
+    "error": {
+      "type": "string",
+      "description": "Failure reason when status is blocked or failed."
+    }
+  },
+  "examples": [
+    {
+      "status": "ok",
+      "bundle_dir": "/home/user/.tpu-agent-suite/runs/20261012T120000Z-000000000000/artifacts/tpu-model-onboarding/dynamo_unwiring/qwen3.5-27b/llmd_bundle",
+      "manifest_files": [
+        "kustomization.yaml",
+        "00-gateway.yaml",
+        "01-endpointpickerconfig.yaml",
+        "02-inferencepool.yaml",
+        "base-modelserver.yaml",
+        "patch-vllm-tpu-workers.yaml"
+      ],
+      "topology": "multi-replica-llmd-homogeneous",
+      "model_id": "Qwen/Qwen3.5-27B",
+      "target_tpu_type": "v6e",
+      "target_tpu_topology": "2x2x1",
+      "mapping_report": {
+        "source_router": "dynamo-frontend",
+        "source_pools": [
+          {"name": "worker", "role": "homogeneous", "gpus": 4, "replicas": 4}
+        ],
+        "translated_pools": [
+          {"name": "vllm-tpu-workers", "role": "homogeneous", "tpu_type": "v6e", "tpu_topology": "2x2x1", "replicas": 4}
+        ],
+        "endpoint_picker_plugins": [
+          "prefix-cache-scorer",
+          "token-load-scorer",
+          "active-request-scorer"
+        ]
+      },
+      "dry_run_verified": true,
+      "log_dir": "/home/user/.tpu-agent-suite/runs/20261012T120000Z-000000000000/artifacts/tpu-model-onboarding/dynamo_unwiring/qwen3.5-27b"
+    }
+  ]
+}

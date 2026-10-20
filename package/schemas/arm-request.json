@@ -39,6 +39,7 @@
         "host-critical-path",
         "recompilation-padding",
         "scheduler-batching",
+        "request-routing",
         "memory-capacity"
       ],
       "description": "Bottleneck kind from study.BOTTLENECK_KINDS (see study-round.json) deciding execution strategy and specialist delegation."
@@ -51,6 +52,31 @@
     "target_parameters": {
       "type": "object",
       "description": "Optional parameters or tuning knobs for the arm hypothesis."
+    },
+    "bundle_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional path to a distributed serving (llm-d) Kustomize bundle directory."
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional target Kubernetes namespace for distributed serving deployment and benchmarking."
+    },
+    "kubeconfig": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional kubeconfig path for target GKE cluster access."
+    },
+    "context": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Kubernetes context name for target GKE cluster access."
+    },
+    "service_url": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional explicit serving endpoint URL for distributed serving benchmarks."
     }
   },
   "examples": [

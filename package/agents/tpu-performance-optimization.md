@@ -32,6 +32,7 @@ references:
   - references/tpu-performance-optimization/NATIVE_PYTORCH_PERFORMANCE.md
   - references/tpu-performance-optimization/VLLM_TORCHTPU_MODEL_SUPPORT.md
   - references/tpu-performance-optimization/SERVING_BENCHMARK.md
+  - references/tpu-performance-optimization/LLMD_ORCHESTRATION.md
 ---
 
 # tpu-performance-optimization Round
@@ -100,7 +101,7 @@ For a model served behind an OpenAI-compatible endpoint, the baseline's number
 comes from `{{script:common/serving_benchmark.py}}` and its accuracy
 from `{{script:tpu-performance-optimization/serving_eval.py}}` on the same server; both exact
 invocations are part of the baseline recipe every arm reruns:
-`{{reference:tpu-performance-optimization/SERVING_BENCHMARK.md}}`.
+`{{reference:tpu-performance-optimization/SERVING_BENCHMARK.md}}`. For a distributed `llm-d` deployment (`bundle_dir`), baseline and arm measurements follow `{{reference:tpu-performance-optimization/LLMD_ORCHESTRATION.md}}`.
 
 If your request carries no `study_id` or no `run_id`, return `invalid_input`.
 Never invent either identifier, and never open a study that was not named to you.

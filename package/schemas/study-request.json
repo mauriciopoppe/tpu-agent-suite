@@ -10,13 +10,165 @@
       "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
       "description": "Slug of the study this round advances. Required: a round never invents or infers one, because a round that opens the wrong study spends a real budget against the wrong plan."
     },
-    "run_id": { "type": "string" }
+    "run_id": { "type": "string" },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional target Hugging Face model ID or deployed Kubernetes service name."
+    },
+    "namespace": {
+      "type": "string",
+      "default": "default",
+      "description": "Optional target Kubernetes namespace for GKE deployment and profiling."
+    },
+    "bundle_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional path to a distributed serving (llm-d) Kustomize bundle directory."
+    },
+    "kubeconfig": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional kubeconfig path for target GKE cluster access."
+    },
+    "context": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Kubernetes context name for target GKE cluster access."
+    },
+    "service_url": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional explicit serving endpoint URL for distributed serving benchmarks."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["approve", "auto"],
+      "default": "approve",
+      "description": "Optional study approval mode matching study-protocol.json ('approve' or 'auto')."
+    },
+    "baseline_metrics": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional path to an onboarding-metrics.json or baseline.json artifact to reuse as the baseline measurement."
+    },
+    "levers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Optional empirical bottleneck lever IDs identified during profiling."
+    },
+    "protocol": {
+      "type": "object",
+      "description": "Optional inline Study Protocol conforming to framework/schemas/study-protocol.json."
+    },
+    "protocol_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional path to the pre-registered study-protocol.json (protocol.json) artifact compiled during query intake."
+    },
+    "hardware_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tpu_type",
+        "topology",
+        "chips_per_slice",
+        "max_slices"
+      ],
+      "properties": {
+        "tpu_type": {
+          "type": "string",
+          "enum": ["v4", "v5e", "v5p", "v6e", "tpu7x"]
+        },
+        "topology": {
+          "type": "string",
+          "pattern": "^[0-9]+x[0-9]+(x[0-9]+)?$"
+        },
+        "chips_per_slice": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_slices": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        }
+      },
+      "description": "Optional TPU slice budget for the study loop."
+    },
+    "traffic_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preset",
+        "workload_kind",
+        "input_seq_len",
+        "output_seq_len",
+        "concurrency_sweep"
+      ],
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": [
+            "agentx",
+            "custom"
+          ]
+        },
+        "workload_kind": {
+          "type": "string",
+          "enum": ["random", "sharegpt", "prefix-repetition"]
+        },
+        "input_seq_len": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "output_seq_len": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prefix_cache_hit_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0
+        },
+        "multi_turn": {
+          "type": "boolean",
+          "default": false
+        },
+        "concurrency_sweep": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "num_prompts_per_cell": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 200
+        }
+      },
+      "description": "Optional benchmark traffic shape for the study loop."
+    }
   },
   "examples": [
     {
       "prompt": "Advance one round.",
       "study_id": "qwen35-397b-ttft",
       "run_id": "20260914T120000Z-000000000000"
+    },
+    {
+      "prompt": "Onboard Qwen 3.5 on GKE TPU v7x and optimize throughput for AgentX",
+      "study_id": "qwen35-32b-tpu7x-agentx-opt",
+      "run_id": "20261012T120000Z-000000000000",
+      "target": "Qwen/Qwen3.5-32B",
+      "namespace": "default",
+      "mode": "approve",
+      "protocol_path": "/tmp/qwen35-32b-tpu7x-agentx-opt/protocol.json"
     }
   ]
 }

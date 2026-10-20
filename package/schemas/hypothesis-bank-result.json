@@ -212,6 +212,10 @@
             "type": "object",
             "description": "Open object: the recipe. With kind it forms the arm fingerprint used to reject duplicate recipes."
           },
+          "epp_config": {
+            "type": "object",
+            "description": "Optional distributed-serving (llm-d) EndpointPickerConfig and LeaderWorkerSet recipe parameters. Merged with target_parameters into the arm fingerprint."
+          },
           "kb_references": {
             "type": "array",
             "items": {
@@ -233,6 +237,9 @@
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
                 },
                 "target_parameters": {
+                  "type": "object"
+                },
+                "epp_config": {
                   "type": "object"
                 },
                 "claim": {

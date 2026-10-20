@@ -136,6 +136,31 @@
       "type": "integer",
       "minimum": 0,
       "description": "How many HLO ops by device time the report should list per trace. They go in the report in the tool's own shape, not in the result."
+    },
+    "bundle_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional path to a distributed serving (llm-d) Kustomize bundle directory. When provided without XProf traces, tpu-diagnostics executes a fast distributed-serving passthrough returning request-routing and scheduler-batching levers."
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Kubernetes namespace for a distributed serving (llm-d) deployment."
+    },
+    "kubeconfig": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional kubeconfig path for target GKE cluster access."
+    },
+    "context": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Kubernetes context name for target GKE cluster access."
+    },
+    "service_url": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional serving endpoint URL for a distributed serving (llm-d) deployment."
     }
   },
   "examples": [

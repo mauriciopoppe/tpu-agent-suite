@@ -4378,6 +4378,62 @@ def build_runtime_parser() -> argparse.ArgumentParser:
                           action="store_true",
                           help="Output raw JSON format")
 
+    p_deployment = sub.add_parser(
+        "deployment",
+        help="Inspect and manage Kubernetes serving deployments and topologies",
+    )
+    deployment_sub = p_deployment.add_subparsers(
+        dest="deployment_action",
+        required=True,
+        help="Deployment operation",
+    )
+    p_dep_inspect = deployment_sub.add_parser(
+        "inspect",
+        help=
+        "Inspect deployment topology (single-host, llm-d homogeneous/disaggregated, Dynamo)",
+    )
+    p_dep_inspect.add_argument(
+        "--manifests",
+        type=Path,
+        default=None,
+        help="Path to manifest file or directory to inspect offline",
+    )
+    p_dep_inspect.add_argument(
+        "--namespace",
+        default="default",
+        help="Kubernetes namespace to inspect",
+    )
+    p_dep_inspect.add_argument(
+        "--kubeconfig",
+        default=None,
+        help="Path to kubeconfig",
+    )
+    p_dep_inspect.add_argument(
+        "--context",
+        default=None,
+        help="Kubectl context",
+    )
+    p_dep_inspect.add_argument(
+        "--store-dir",
+        type=Path,
+        default=None,
+        help=
+        "Directory to store captured cluster manifests and inspection_report.json",
+    )
+    p_dep_inspect.add_argument(
+        "--capture-logs",
+        action="store_true",
+        default=False,
+        help=
+        "Capture pod logs (<store-dir>/pod_logs/<pod_name>.log) when --store-dir is set",
+    )
+    p_dep_inspect.add_argument(
+        "--json",
+        action="store_true",
+        default=True,
+        help="Output raw JSON format",
+    )
+
     return parser
 
 
@@ -4471,6 +4527,37 @@ def main(argv: list[str] | None = None) -> int:
 
         elif cmd == "config":
             return compute.handle_config_cli(args)
+
+        elif cmd == "deployment":
+            if getattr(args, "deployment_action", "") == "inspect":
+                import importlib.util
+                base_dir = Path(__file__).resolve().parent.parent
+                candidate_paths = (
+                    base_dir / "scripts" / "tpu-model-onboarding" /
+                    "inspect_deployment.py",
+                    base_dir / "package" / "scripts" / "tpu-model-onboarding" /
+                    "inspect_deployment.py",
+                )
+                script_path = next((p for p in candidate_paths if p.exists()),
+                                   candidate_paths[0])
+                if script_path.exists():
+                    spec = importlib.util.spec_from_file_location(
+                        "inspect_deployment", script_path)
+                    if spec and spec.loader:
+                        mod = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(mod)
+                        report = mod.inspect_deployment(
+                            manifests=args.manifests,
+                            namespace=args.namespace,
+                            kubeconfig=args.kubeconfig,
+                            context=args.context,
+                            store_dir=args.store_dir,
+                            capture_logs=args.capture_logs,
+                        )
+                        print(format_json(report))
+                        return 0
+                raise TpuAgentSuiteError(
+                    f"inspect_deployment script not found at {script_path}")
 
         return 0
     except compute.ComputeConfigError as exc:

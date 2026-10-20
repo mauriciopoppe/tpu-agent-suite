@@ -1,0 +1,591 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLM-d Distributed Serving Per-Arm Telemetry",
+  "description": "Comprehensive per-arm telemetry contract for homogeneous distributed LLM serving on TPU and GPU clusters covering request latencies, throughput, SLA goodput, KV and prefix cache metrics, and system reliability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "arm_id",
+    "scenario",
+    "model",
+    "accelerator_type",
+    "timestamp",
+    "latencies",
+    "throughput",
+    "cache_memory",
+    "system_reliability"
+  ],
+  "properties": {
+    "arm_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier of the tuning arm or baseline (e.g. baseline, arm-001)."
+    },
+    "scenario": {
+      "type": "string",
+      "enum": [
+        "inferencex-agentx-mvp",
+        "custom"
+      ],
+      "description": "Benchmark scenario or workload profile executed for this arm."
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model identifier or HuggingFace repo (e.g. Qwen/Qwen3-32B)."
+    },
+    "accelerator_type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Accelerator hardware type (e.g. v6e, v5e, v5p, v4, v7x, b200)."
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 UTC timestamp of the benchmark run completion."
+    },
+    "harness": {
+      "type": "string",
+      "description": "Benchmark client harness utilized (e.g. aiperf, aiperf-agentx, inference-perf)."
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total benchmark measurement duration in seconds."
+    },
+    "routing_algorithm": {
+      "type": "string",
+      "description": "Routing algorithm or EndpointPickerConfig scorer policy (e.g. precise-prefix-cache-scorer, kv-cache-utilization-scorer, round-robin)."
+    },
+    "replica_topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Homogeneous serving deployment topology and replica allocation.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "homogeneous",
+            "unknown"
+          ],
+          "description": "Serving architecture mode."
+        },
+        "total_workers": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total active worker pods in the serving pool."
+        },
+        "chips_per_replica": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Accelerator chips allocated per replica (tensor/pipeline parallel size)."
+        },
+        "topology_shape": {
+          "type": "string",
+          "description": "TPU mesh topology shape (e.g. 1x1, 2x4, 4x4)."
+        }
+      }
+    },
+    "latencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Request-level latency percentiles and summary statistics in milliseconds.",
+      "required": [
+        "ttft_ms",
+        "tpot_ms",
+        "itl_ms",
+        "e2e_ms"
+      ],
+      "properties": {
+        "ttft_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Time To First Token latency in milliseconds.",
+          "required": [
+            "p50",
+            "p90",
+            "p95",
+            "p99"
+          ],
+          "properties": {
+            "mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean TTFT across all successful requests."
+            },
+            "median": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Median TTFT across all successful requests."
+            },
+            "p50": {
+              "type": "number",
+              "minimum": 0,
+              "description": "50th percentile TTFT in milliseconds."
+            },
+            "p90": {
+              "type": "number",
+              "minimum": 0,
+              "description": "90th percentile TTFT in milliseconds."
+            },
+            "p95": {
+              "type": "number",
+              "minimum": 0,
+              "description": "95th percentile TTFT in milliseconds."
+            },
+            "p99": {
+              "type": "number",
+              "minimum": 0,
+              "description": "99th percentile TTFT in milliseconds."
+            }
+          }
+        },
+        "tpot_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Time Per Output Token latency in milliseconds.",
+          "required": [
+            "mean",
+            "median",
+            "p90",
+            "p99"
+          ],
+          "properties": {
+            "mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean TPOT across all successful requests."
+            },
+            "median": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Median TPOT across all successful requests."
+            },
+            "p50": {
+              "type": "number",
+              "minimum": 0,
+              "description": "50th percentile TPOT in milliseconds."
+            },
+            "p90": {
+              "type": "number",
+              "minimum": 0,
+              "description": "90th percentile TPOT in milliseconds."
+            },
+            "p95": {
+              "type": "number",
+              "minimum": 0,
+              "description": "95th percentile TPOT in milliseconds."
+            },
+            "p99": {
+              "type": "number",
+              "minimum": 0,
+              "description": "99th percentile TPOT in milliseconds."
+            }
+          }
+        },
+        "itl_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Inter-Token Latency in milliseconds.",
+          "required": [
+            "mean",
+            "p99"
+          ],
+          "properties": {
+            "mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean ITL across all generated output tokens."
+            },
+            "median": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Median ITL in milliseconds."
+            },
+            "p50": {
+              "type": "number",
+              "minimum": 0,
+              "description": "50th percentile ITL in milliseconds."
+            },
+            "p90": {
+              "type": "number",
+              "minimum": 0,
+              "description": "90th percentile ITL in milliseconds."
+            },
+            "p95": {
+              "type": "number",
+              "minimum": 0,
+              "description": "95th percentile ITL in milliseconds."
+            },
+            "p99": {
+              "type": "number",
+              "minimum": 0,
+              "description": "99th percentile ITL in milliseconds."
+            }
+          }
+        },
+        "e2e_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "End-to-end request turnaround latency in milliseconds.",
+          "required": [
+            "p50",
+            "p90",
+            "p99"
+          ],
+          "properties": {
+            "mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean end-to-end request latency."
+            },
+            "median": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Median end-to-end request latency."
+            },
+            "p50": {
+              "type": "number",
+              "minimum": 0,
+              "description": "50th percentile end-to-end request latency."
+            },
+            "p90": {
+              "type": "number",
+              "minimum": 0,
+              "description": "90th percentile end-to-end request latency."
+            },
+            "p95": {
+              "type": "number",
+              "minimum": 0,
+              "description": "95th percentile end-to-end request latency."
+            },
+            "p99": {
+              "type": "number",
+              "minimum": 0,
+              "description": "99th percentile end-to-end request latency."
+            }
+          }
+        }
+      }
+    },
+    "throughput": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Throughput and SLA goodput metrics.",
+      "required": [
+        "request_throughput_rps",
+        "output_token_throughput_tps",
+        "total_token_throughput_tps",
+        "goodput"
+      ],
+      "properties": {
+        "request_throughput_rps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Completed requests per second."
+        },
+        "output_token_throughput_tps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Generated output tokens per second."
+        },
+        "total_token_throughput_tps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total prompt + output tokens processed per second."
+        },
+        "input_token_throughput_tps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Prompt input tokens processed per second."
+        },
+        "goodput": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Goodput under specified SLA constraints.",
+          "required": [
+            "goodput_percentage",
+            "requests_meeting_sla",
+            "total_requests"
+          ],
+          "properties": {
+            "sla_ttft_target_ms": {
+              "type": "number",
+              "minimum": 0,
+              "description": "TTFT SLA threshold in milliseconds."
+            },
+            "sla_tpot_target_ms": {
+              "type": "number",
+              "minimum": 0,
+              "description": "TPOT SLA threshold in milliseconds."
+            },
+            "sla_e2e_target_ms": {
+              "type": "number",
+              "minimum": 0,
+              "description": "End-to-end latency SLA threshold in milliseconds."
+            },
+            "goodput_percentage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Percentage of requests meeting all SLA targets (0.0 to 100.0)."
+            },
+            "requests_meeting_sla": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of requests meeting all SLA criteria."
+            },
+            "total_requests": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total requests evaluated against SLA."
+            }
+          }
+        }
+      }
+    },
+    "cache_memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "KV cache and prefix cache metrics.",
+      "required": [
+        "kv_cache",
+        "prefix_cache"
+      ],
+      "properties": {
+        "kv_cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Accelerator HBM KV cache utilization metrics.",
+          "required": [
+            "usage_factor_mean",
+            "usage_factor_peak"
+          ],
+          "properties": {
+            "usage_factor_mean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Mean accelerator KV cache usage fraction across benchmark duration (0.0 to 1.0)."
+            },
+            "usage_factor_peak": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Peak accelerator KV cache usage fraction (0.0 to 1.0)."
+            },
+            "total_blocks": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total physical KV cache blocks allocated on accelerators."
+            },
+            "free_blocks": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Free physical KV cache blocks available on accelerators."
+            }
+          }
+        },
+        "prefix_cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Prefix caching and prompt reuse metrics.",
+          "required": [
+            "hit_rate_tokens",
+            "hit_rate_requests"
+          ],
+          "properties": {
+            "hit_rate_tokens": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Token-level prefix cache hit rate (cached prompt tokens / total prompt tokens, 0.0 to 1.0)."
+            },
+            "hit_rate_requests": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Request-level prefix cache hit rate (requests with cache hit / total requests, 0.0 to 1.0)."
+            },
+            "queries_tokens": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total prompt tokens queried for prefix cache matching."
+            },
+            "hits_tokens": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total prompt tokens matched and reused from prefix cache."
+            },
+            "queries_requests": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total request count queried for prefix cache matching."
+            },
+            "hits_requests": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total request count finding at least one cached block."
+            }
+          }
+        }
+      }
+    },
+    "system_reliability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "System reliability, queuing dynamics, and error rate telemetry.",
+      "required": [
+        "total_requests",
+        "successful_requests",
+        "failed_requests",
+        "error_rate",
+        "timeout_rate",
+        "http_status_codes",
+        "queue"
+      ],
+      "properties": {
+        "total_requests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total benchmark client requests initiated."
+        },
+        "successful_requests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total requests completed with HTTP 200."
+        },
+        "failed_requests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total requests that errored or failed."
+        },
+        "error_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of requests that failed (0.0 to 1.0)."
+        },
+        "timeout_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of requests that timed out (0.0 to 1.0)."
+        },
+        "http_status_codes": {
+          "type": "object",
+          "description": "Map of HTTP status code strings to counts.",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "queue": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Router and worker queuing statistics.",
+          "required": [
+            "router_queue_depth_mean",
+            "router_queue_depth_max",
+            "waiting_time_ms_mean",
+            "waiting_time_ms_p99",
+            "execution_time_ms_mean",
+            "execution_time_ms_p99"
+          ],
+          "properties": {
+            "router_queue_depth_mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean queue depth at the router / ingress gateway."
+            },
+            "router_queue_depth_max": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Peak queue depth observed at the router."
+            },
+            "waiting_time_ms_mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean request waiting/queue time before execution in milliseconds."
+            },
+            "waiting_time_ms_p99": {
+              "type": "number",
+              "minimum": 0,
+              "description": "P99 request waiting/queue time before execution in milliseconds."
+            },
+            "execution_time_ms_mean": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Mean active execution time on worker in milliseconds."
+            },
+            "execution_time_ms_p99": {
+              "type": "number",
+              "minimum": 0,
+              "description": "P99 active execution time on worker in milliseconds."
+            }
+          }
+        }
+      }
+    },
+    "worker_telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-worker server metrics and load distribution statistics.",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "Serving backend engine (vllm, sglang, dynamo)."
+        },
+        "worker_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of distinct worker endpoints reporting metrics."
+        },
+        "worker_load_skew_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Load skew ratio across worker endpoints (max worker requests / mean worker requests)."
+        },
+        "per_worker": {
+          "type": "array",
+          "description": "Individual per-worker scraped metrics.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "endpoint",
+              "role"
+            ],
+            "properties": {
+              "endpoint": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "homogeneous",
+                  "worker",
+                  "unknown"
+                ]
+              },
+              "prefix_cache_hit_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "kv_cache_usage_peak": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "requests_processed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

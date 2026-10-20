@@ -26,6 +26,7 @@ references:
   - references/tpu-performance-optimization/STUDY_STATE.md
   - references/tpu-performance-optimization/ROUND.md
   - references/tpu-performance-optimization/EXECUTION.md
+  - references/tpu-performance-optimization/LLMD_ORCHESTRATION.md
   - references/tpu-kernel-development/kernel-worker/plan-kernel.md
 ---
 
@@ -88,6 +89,7 @@ Decompose identified bottlenecks into 2–3 concrete, orthogonal architectural h
    - **Runtime & Host Dispatch (`kind="runtime"`)**: Inspect the serving harness or runner source code. Formulate fixes for host-device synchronization (e.g. eliminating blocking `.item()` / `.cpu()` calls, pipelined token futures, or chunked prefill systolic alignment).
    - **Memory & Offloading (`kind="memory"`)**: Formulate KV-cache paging policies (e.g. FP8 KV-cache `--kv-cache-dtype fp8`, block size tuning, or host-DRAM paging).
    - **Compiler & XLA Flags (`kind="config"`)**: Formulate target XLA flags (e.g. `--xla_tpu_enable_async_collective_fusion=true` or layout optimization flags).
+   - **Distributed Serving & Routing (`kind="request-routing"`, `kind="load-imbalance"`, `kind="scheduler-batching"`)**: Follow `{{reference:tpu-performance-optimization/LLMD_ORCHESTRATION.md}}` and query `llmd-routing-and-epp` in the Knowledge Base.
 
 3. **Grounding, Code References (`code_refs`), and History Audit**:
    - Map each proposed hypothesis to concrete source files in `<repo>`. Populate `code_refs` with `path`, `lines`, and `symbol`.

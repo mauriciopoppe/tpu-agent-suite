@@ -1,0 +1,106 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: optimized-baseline-sa
+  namespace: llmd-qwen3-prod
+  labels:
+    llm-d.ai/guide: optimized-baseline
+    llm-d.ai/accelerator-variant: tpu
+---
+apiVersion: leaderworkerset.x-k8s.io/v1
+kind: LeaderWorkerSet
+metadata:
+  name: vllm-tpu-workers
+  namespace: llmd-qwen3-prod
+  labels:
+    app: vllm-tpu-homogeneous
+    role: homogeneous
+    llm-d.ai/inferenceServing: 'true'
+    llm-d.ai/guide: optimized-baseline
+    llm-d.ai/role: decode
+    llm-d.ai/accelerator-variant: tpu
+    llm-d.ai/accelerator-vendor: google
+spec:
+  replicas: 4
+  leaderWorkerTemplate:
+    size: 1
+    workerTemplate:
+      metadata:
+        labels:
+          app: vllm-tpu-homogeneous
+          role: homogeneous
+          llm-d.ai/inferenceServing: 'true'
+          llm-d.ai/guide: optimized-baseline
+          llm-d.ai/role: decode
+          llm-d.ai/accelerator-variant: tpu
+          llm-d.ai/accelerator-vendor: google
+        annotations:
+          cloud.google.com/gke-tpu-topology: 2x4
+          cloud.google.com/gke-tpu-accelerator-label: tpu-v6e-slice
+      spec:
+        nodeSelector:
+          cloud.google.com/gke-tpu-accelerator: v6e
+          cloud.google.com/gke-tpu-topology: 2x4
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        containers:
+        - name: vllm-tpu
+          image: us-docker.pkg.dev/cloud-tpu-images/vllm/vllm-torchtpu:latest
+          command:
+          - vllm
+          - serve
+          args:
+          - --model
+          - Qwen/Qwen3-32B
+          - --port=8000
+          - --tensor-parallel-size
+          - '8'
+          - --block-size
+          - '768'
+          - --enable-prefix-caching
+          - --gpu-memory-utilization
+          - '0.95'
+          - --max-model-len
+          - '32768'
+          env:
+          - name: TPU_VLLM_ENABLE_UNIFIED_BLOCK_POOL
+            value: '1'
+          - name: VLLM_TORCHTPU_ACCELERATOR
+            value: v6e
+          resources:
+            limits:
+              google.com/tpu: '8'
+              memory: 180Gi
+              cpu: '32'
+            requests:
+              google.com/tpu: '8'
+              memory: 120Gi
+              cpu: '16'
+          volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          ports:
+          - name: http
+            containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10

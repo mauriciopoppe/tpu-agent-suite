@@ -37,6 +37,8 @@ class TestModelOnboardingSchemas(unittest.TestCase):
         "schemas/unwiring-request.json",
         "schemas/unwiring-result.json",
         "schemas/bench-request.json",
+        "schemas/dynamo-unwiring-request.json",
+        "schemas/dynamo-unwiring-result.json",
     ]
 
     EXPECTED_AGENT_SCHEMAS = {
@@ -47,6 +49,10 @@ class TestModelOnboardingSchemas(unittest.TestCase):
         "tpu-unwiring": (
             "schemas/unwiring-request.json",
             "schemas/unwiring-result.json",
+        ),
+        "tpu-dynamo-unwiring": (
+            "schemas/dynamo-unwiring-request.json",
+            "schemas/dynamo-unwiring-result.json",
         ),
     }
 
